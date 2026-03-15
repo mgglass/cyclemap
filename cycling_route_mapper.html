@@ -1,0 +1,1223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>CycleMap — Road Cycling Route Planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+:root {
+  --green: #2d6a4f;
+  --green-dark: #1b4332;
+  --green-light: #d8f3dc;
+  --green-mid: #74c69d;
+  --accent: #f4a261;
+  --accent-dark: #e76f51;
+  --white: #ffffff;
+  --off: #f8faf8;
+  --gray-50: #f0f4f0;
+  --gray-100: #dde8de;
+  --gray-300: #9ab09c;
+  --gray-500: #536955;
+  --gray-800: #1c2b1e;
+  --sidebar-w: 320px;
+  --header-h: 56px;
+  --radius: 10px;
+  --radius-lg: 16px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body { font-family: 'Barlow', sans-serif; background: var(--off); color: var(--gray-800); }
+
+/* ── Header ── */
+.header {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+  height: var(--header-h);
+  background: var(--green-dark);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 1.25rem;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.25);
+}
+.logo { display: flex; align-items: center; gap: 10px; }
+.logo svg { width: 28px; height: 28px; }
+.logo-text { font-family: 'Barlow Condensed', sans-serif; font-size: 22px; font-weight: 700; color: #fff; letter-spacing: 0.5px; }
+.logo-text span { color: var(--green-mid); }
+.header-right { display: flex; align-items: center; gap: 8px; }
+
+/* ── Layout ── */
+.layout {
+  position: fixed;
+  top: var(--header-h); left: 0; right: 0; bottom: 0;
+  display: flex;
+}
+#map {
+  flex: 1;
+  height: 100%;
+  cursor: crosshair;
+}
+#map.snap-mode { cursor: pointer; }
+
+/* ── Sidebar ── */
+.sidebar {
+  width: var(--sidebar-w);
+  height: 100%;
+  background: var(--white);
+  border-left: 1px solid var(--gray-100);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  z-index: 500;
+}
+.sidebar-section {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--gray-100);
+}
+.sidebar-label {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 11px; font-weight: 600;
+  color: var(--gray-300);
+  text-transform: uppercase; letter-spacing: 0.1em;
+  margin-bottom: 10px;
+}
+
+/* ── Mode toggle ── */
+.mode-toggle {
+  display: flex;
+  background: var(--gray-50);
+  border: 1px solid var(--gray-100);
+  border-radius: var(--radius);
+  padding: 3px; gap: 0;
+}
+.mode-btn {
+  flex: 1; padding: 7px 8px;
+  font-family: 'Barlow', sans-serif; font-size: 12px; font-weight: 600;
+  border: none; background: transparent; color: var(--gray-500);
+  border-radius: 8px; cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  text-align: center; line-height: 1.3;
+}
+.mode-btn.active { background: var(--green); color: #fff; }
+.mode-hint { font-size: 11px; color: var(--gray-300); margin-top: 7px; font-style: italic; line-height: 1.4; }
+
+/* ── Stats ── */
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.stat-card {
+  background: var(--gray-50);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  border: 1px solid var(--gray-100);
+}
+.stat-val { font-family: 'Barlow Condensed', sans-serif; font-size: 24px; font-weight: 700; color: var(--green); line-height: 1; }
+.stat-unit { font-size: 12px; color: var(--gray-300); margin-left: 2px; }
+.stat-lbl { font-size: 11px; color: var(--gray-500); margin-top: 3px; }
+
+/* ── Buttons ── */
+.btn-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.btn {
+  padding: 8px 13px;
+  font-family: 'Barlow', sans-serif; font-size: 12px; font-weight: 600;
+  border-radius: var(--radius); cursor: pointer;
+  transition: background 0.15s, opacity 0.15s, transform 0.1s;
+  white-space: nowrap; display: inline-flex; align-items: center; gap: 5px;
+}
+.btn:active { transform: scale(0.97); }
+.btn-green { background: var(--green); color: #fff; border: none; }
+.btn-green:hover { background: var(--green-dark); }
+.btn-outline { background: #fff; color: var(--green); border: 1.5px solid var(--green); }
+.btn-outline:hover { background: var(--green-light); }
+.btn-danger { background: #fff; color: #c0392b; border: 1.5px solid #e74c3c; }
+.btn-danger:hover { background: #fdf0ef; }
+.btn-accent { background: var(--accent); color: #fff; border: none; }
+.btn-accent:hover { background: var(--accent-dark); }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ── Route name input ── */
+.route-name-row { display: flex; gap: 6px; }
+.route-name-row input {
+  flex: 1; padding: 8px 11px;
+  border: 1.5px solid var(--gray-100); border-radius: var(--radius);
+  font-family: 'Barlow', sans-serif; font-size: 13px; color: var(--gray-800);
+  background: var(--white);
+  transition: border-color 0.15s;
+}
+.route-name-row input:focus { outline: none; border-color: var(--green); }
+
+/* ── Saved routes ── */
+.saved-routes { flex: 1; overflow-y: auto; padding: 10px 16px; }
+.no-routes { font-size: 13px; color: var(--gray-300); font-style: italic; text-align: center; padding: 20px 0; }
+.route-item {
+  background: var(--gray-50); border: 1px solid var(--gray-100);
+  border-radius: var(--radius); padding: 10px 12px; margin-bottom: 8px;
+  cursor: pointer; transition: border-color 0.15s, background 0.15s;
+}
+.route-item:hover { border-color: var(--green); background: var(--green-light); }
+.route-item-name { font-size: 14px; font-weight: 600; color: var(--gray-800); }
+.route-item-meta { font-size: 11px; color: var(--gray-300); margin-top: 2px; }
+.route-item-actions { display: flex; gap: 5px; margin-top: 8px; }
+
+/* ── Modal ── */
+.modal-bg {
+  display: none; position: fixed; inset: 0; z-index: 2000;
+  background: rgba(0,0,0,0.5); align-items: center; justify-content: center;
+}
+.modal-bg.open { display: flex; }
+.modal {
+  background: var(--white); border-radius: var(--radius-lg);
+  padding: 1.5rem; width: 90%; max-width: 560px; max-height: 80vh;
+  overflow-y: auto; box-shadow: 0 8px 40px rgba(0,0,0,0.2);
+}
+.modal h2 { font-family: 'Barlow Condensed', sans-serif; font-size: 22px; font-weight: 700; color: var(--green-dark); margin-bottom: 12px; }
+.modal-close { float: right; background: none; border: none; font-size: 22px; cursor: pointer; color: var(--gray-300); line-height: 1; }
+.directions-text {
+  font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+  background: var(--gray-50); border: 1px solid var(--gray-100);
+  border-radius: var(--radius); padding: 1rem; white-space: pre-wrap;
+  line-height: 1.7; color: var(--gray-800);
+  max-height: 50vh; overflow-y: auto;
+}
+.modal-actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+
+/* ── Toast ── */
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+  background: var(--green-dark); color: #fff;
+  padding: 10px 20px; border-radius: 24px;
+  font-size: 13px; font-weight: 500;
+  transition: transform 0.3s ease; z-index: 3000;
+  pointer-events: none; white-space: nowrap;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+
+/* ── Map controls overlay ── */
+.map-controls {
+  position: absolute; top: 12px; left: 12px; z-index: 600;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.map-btn {
+  width: 36px; height: 36px;
+  background: var(--white); border: 1px solid var(--gray-100);
+  border-radius: 8px; cursor: pointer; font-size: 16px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+  transition: background 0.15s;
+}
+.map-btn:hover { background: var(--gray-50); }
+.map-btn.danger:hover { background: #fdf0ef; }
+
+/* ── Search box ── */
+.search-box {
+  position: absolute; top: 12px; left: 56px; z-index: 600;
+  display: flex; gap: 0;
+}
+.search-box input {
+  width: 220px; padding: 8px 12px;
+  border: 1px solid var(--gray-100); border-right: none;
+  border-radius: 8px 0 0 8px;
+  font-family: 'Barlow', sans-serif; font-size: 13px;
+  background: var(--white); color: var(--gray-800);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+}
+.search-box input:focus { outline: none; border-color: var(--green); }
+.search-box button {
+  padding: 8px 12px;
+  background: var(--green); color: #fff; border: none;
+  border-radius: 0 8px 8px 0; cursor: pointer; font-size: 14px;
+}
+.search-box button:hover { background: var(--green-dark); }
+
+
+/* ── Road warnings ── */
+.road-warnings { padding: 10px 16px 6px; border-bottom: 1px solid var(--gray-100); }
+.warn-item {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 6px 8px; border-radius: 8px; margin-bottom: 5px;
+  font-size: 12px; line-height: 1.4;
+}
+.warn-item.warn-red    { background: #fef0ef; border-left: 3px solid #e74c3c; }
+.warn-item.warn-yellow { background: #fffbea; border-left: 3px solid #f4a261; }
+.warn-item.warn-brown  { background: #fdf5ec; border-left: 3px solid #8b5e3c; }
+.warn-item.warn-green  { background: #f0faf4; border-left: 3px solid #2d6a4f; }
+.warn-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 2px; }
+.warn-dot.red    { background: #e74c3c; }
+.warn-dot.yellow { background: #f4a261; }
+.warn-dot.brown  { background: #8b5e3c; }
+.warn-dot.green  { background: #2d6a4f; }
+.warn-text { color: var(--gray-800); }
+.warn-text strong { font-weight: 600; }
+.legend-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+.legend-item { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--gray-500); }
+.legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.warn-item.warn-construction { background: #fff8e6; border-left: 3px solid #e6a817; }
+.warn-dot.construction { background: #e6a817; }
+
+/* Leaflet overrides */
+.leaflet-control-zoom { display: none; }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="logo">
+    <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="8" cy="20" r="5" stroke="#74c69d" stroke-width="2"/>
+      <circle cx="20" cy="20" r="5" stroke="#74c69d" stroke-width="2"/>
+      <path d="M8 20L13 10L16 15L18 12L20 20" stroke="#f4a261" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="13" cy="10" r="2" fill="#74c69d"/>
+    </svg>
+    <span class="logo-text">Cycle<span>Map</span></span>
+  </div>
+  <div class="header-right">
+    <span id="mode-badge" style="font-size:11px;font-weight:600;background:rgba(255,255,255,0.15);color:#fff;padding:4px 10px;border-radius:20px;">SNAP TO ROADS</span>
+  </div>
+</header>
+
+<div class="layout">
+  <div style="position:relative;flex:1;">
+    <div id="map"></div>
+    <!-- Search -->
+    <div class="search-box">
+      <input type="text" id="search-input" placeholder="Search for a location…" onkeydown="if(event.key==='Enter')searchLocation()"/>
+      <button onclick="searchLocation()">🔍</button>
+    </div>
+    <!-- Map overlay controls -->
+    <div class="map-controls" style="top:52px;left:12px;">
+      <button class="map-btn danger" title="Undo last point" onclick="undoLast()">↩</button>
+      <button class="map-btn" title="Zoom in" onclick="map.zoomIn()">+</button>
+      <button class="map-btn" title="Zoom out" onclick="map.zoomOut()">−</button>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <!-- Mode -->
+    <div class="sidebar-section">
+      <div class="sidebar-label">Routing mode</div>
+      <div class="mode-toggle">
+        <button class="mode-btn" id="btn-free" onclick="setMode('free')">✏️ Free Draw<br><small style="font-weight:400;font-size:10px;">Any road, full control</small></button>
+        <button class="mode-btn active" id="btn-snap" onclick="setMode('snap')">🛣️ Snap to Roads<br><small style="font-weight:400;font-size:10px;">Auto-follows roads</small></button>
+      </div>
+      <div class="mode-hint" id="mode-hint">Click to place waypoints. The route snaps to the nearest road automatically via OSRM.</div>
+    </div>
+
+    <!-- Stats -->
+    <div class="sidebar-section">
+      <div class="sidebar-label">Route stats</div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div><span class="stat-val" id="stat-dist">0.0</span><span class="stat-unit">mi</span></div>
+          <div class="stat-lbl">Total distance</div>
+        </div>
+        <div class="stat-card">
+          <div><span class="stat-val" id="stat-km">0.0</span><span class="stat-unit">km</span></div>
+          <div class="stat-lbl">Kilometers</div>
+        </div>
+        <div class="stat-card">
+          <div><span class="stat-val" id="stat-pts">0</span></div>
+          <div class="stat-lbl">Waypoints</div>
+        </div>
+        <div class="stat-card">
+          <div><span class="stat-val" id="stat-seg">0</span></div>
+          <div class="stat-lbl">Segments</div>
+        </div>
+        <div class="stat-card" style="grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <div>
+            <div style="display:flex;align-items:baseline;gap:4px;">
+              <span style="font-size:13px;color:var(--green);">&#9650;</span>
+              <span class="stat-val" id="stat-ascent" style="font-size:20px;">&#8212;</span>
+              <span class="stat-unit" id="stat-ascent-unit" style="display:none;">ft</span>
+              <span id="stat-ascent-spinner" style="font-size:11px;color:var(--gray-300);display:none;">fetching…</span>
+            </div>
+            <div class="stat-lbl">Total ascent</div>
+          </div>
+          <div style="width:1px;height:32px;background:var(--gray-100);"></div>
+          <div>
+            <div style="display:flex;align-items:baseline;gap:4px;">
+              <span style="font-size:13px;color:var(--accent);">&#9660;</span>
+              <span class="stat-val" id="stat-descent" style="font-size:20px;">&#8212;</span>
+              <span class="stat-unit" id="stat-descent-unit" style="display:none;">ft</span>
+            </div>
+            <div class="stat-lbl">Total descent</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="sidebar-section">
+      <div class="sidebar-label">Route actions</div>
+      <div class="btn-row" style="margin-bottom:8px;">
+        <button class="btn btn-outline" onclick="undoLast()">↩ Undo</button>
+        <button class="btn btn-danger" onclick="clearRoute()">✕ Clear</button>
+        <button class="btn btn-outline" onclick="toggleUnit()"><span id="unit-label">Show km</span></button>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-green" onclick="showDirections()">📋 Directions</button>
+        <button class="btn btn-accent" onclick="openShare()">↗ Share</button>
+      </div>
+    </div>
+
+    <!-- Road conditions -->
+    <div class="road-warnings" id="road-warnings-section" style="display:none;">
+      <div class="sidebar-label" style="margin-bottom:6px;">Road conditions</div>
+      <div id="road-warnings-list"></div>
+      <div class="legend-row" style="margin-top:8px;padding-top:6px;border-top:1px solid var(--gray-100);">
+        <div class="legend-item"><div class="legend-dot" style="background:#e74c3c;"></div>Busy road</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f4a261;"></div>Moderate traffic</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#2d6a4f;"></div>Quiet road</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#8b5e3c;"></div>Unpaved/gravel</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#e6a817;"></div>Construction</div>
+      </div>
+    </div>
+
+    <!-- Save route -->
+    <div class="sidebar-section">
+      <div class="sidebar-label">Save route</div>
+      <div class="route-name-row">
+        <input type="text" id="route-name" placeholder="Name this route…"/>
+        <button class="btn btn-green" onclick="saveRoute()">Save</button>
+      </div>
+    </div>
+
+    <!-- Notes -->
+    <div class="sidebar-section">
+      <div class="sidebar-label">Ride notes</div>
+      <textarea id="route-notes" placeholder="Add impressions, road conditions, highlights…" style="
+        width:100%; min-height:80px; max-height:140px;
+        padding:8px 11px; resize:vertical;
+        border:1.5px solid var(--gray-100); border-radius:var(--radius);
+        font-family:'Barlow',sans-serif; font-size:13px; color:var(--gray-800);
+        background:var(--white); line-height:1.5;
+        transition:border-color 0.15s;
+      " onfocus="this.style.borderColor='var(--green)'" onblur="this.style.borderColor='var(--gray-100)'"></textarea>
+    </div>
+
+    <!-- Saved routes -->
+    <div class="sidebar-label" style="padding:12px 16px 0;">Saved routes</div>
+    <div class="saved-routes" id="saved-routes-list">
+      <div class="no-routes">No saved routes yet.<br>Map a ride and save it above.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Directions modal -->
+<div class="modal-bg" id="directions-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('directions-modal')">×</button>
+    <h2>📋 Route Directions</h2>
+    <div class="directions-text" id="directions-content"></div>
+    <div class="modal-actions">
+      <button class="btn btn-green" onclick="copyDirections()">📋 Copy to clipboard</button>
+      <button class="btn btn-outline" onclick="emailDirections()">✉️ Open in email</button>
+      <button class="btn btn-outline" onclick="closeModal('directions-modal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Share modal -->
+<div class="modal-bg" id="share-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('share-modal')">×</button>
+    <h2>↗ Share Route</h2>
+    <p style="font-size:14px;color:#536955;margin-bottom:12px;">Copy the text below to share via email or paste into a text message.</p>
+    <div class="directions-text" id="share-content"></div>
+    <div class="modal-actions">
+      <button class="btn btn-green" onclick="copyShare()">📋 Copy to clipboard</button>
+      <button class="btn btn-outline" onclick="emailShare()">✉️ Open in email</button>
+      <button class="btn btn-outline" onclick="closeModal('share-modal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ── State ──
+let waypoints = [];
+let polyline = null;
+let markers = [];
+let mode = 'snap';
+let showMiles = true;
+let savedRoutes = JSON.parse(localStorage.getItem('cyclemap_routes') || '[]');
+
+// ── Map setup ──
+const map = L.map('map', { zoomControl: false, center: [43.8837, -70.1734], zoom: 14 });
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom: 19
+}).addTo(map);
+
+// Default start: 23 Florence Lane, Pownal, Maine
+// (geolocation intentionally not used — map centers on your home base)
+
+// ── Map click handler ──
+map.on('click', async function(e) {
+  const latlng = e.latlng;
+  if (mode === 'snap') {
+    await addSnapPoint(latlng);
+  } else {
+    addFreePoint(latlng);
+  }
+});
+
+function addFreePoint(latlng) {
+  waypoints.push({ latlng, road: null });
+  addMarker(latlng, waypoints.length);
+  drawRoute();
+  updateStats();
+  runRoadAnalysis();
+}
+
+async function addSnapPoint(latlng) {
+  if (waypoints.length === 0) {
+    waypoints.push({ latlng, road: null });
+    addMarker(latlng, 1);
+    getRoadName(latlng, 0);
+    updateStats();
+    return;
+  }
+  const prev = waypoints[waypoints.length - 1].latlng;
+  // Use OSRM for snapping
+  try {
+    const url = `https://router.project-osrm.org/route/v1/cycling/${prev.lng},${prev.lat};${latlng.lng},${latlng.lat}?overview=full&geometries=geojson`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.routes && data.routes[0]) {
+      const coords = data.routes[0].geometry.coordinates;
+      // Add intermediate snapped points
+      const snappedEnd = L.latLng(coords[coords.length-1][1], coords[coords.length-1][0]);
+      waypoints.push({ latlng: snappedEnd, road: null, snapCoords: coords });
+      addMarker(snappedEnd, waypoints.length);
+      getRoadName(snappedEnd, waypoints.length - 1);
+      drawRoute();
+      updateStats();
+      runRoadAnalysis();
+    } else {
+      addFreePoint(latlng);
+    }
+  } catch(e) {
+    addFreePoint(latlng);
+    showToast('Snap failed — placed point in free-draw mode');
+  }
+}
+
+function addMarker(latlng, num) {
+  const isFirst = num === 1;
+  const size = isFirst ? 28 : 22;
+  const bg = isFirst ? '#2d6a4f' : '#f4a261';
+  const icon = L.divIcon({
+    className: '',
+    html: `<div style="
+      width:${size}px;height:${size}px;
+      background:${bg};
+      border:3px solid #fff;border-radius:50%;
+      display:flex;align-items:center;justify-content:center;
+      font-size:${isFirst?11:9}px;font-weight:700;color:#fff;
+      box-shadow:0 2px 6px rgba(0,0,0,0.3);
+      font-family:'Barlow Condensed',sans-serif;
+    ">${num}</div>`,
+    iconSize: [size, size],
+    iconAnchor: [size/2, size/2],
+  });
+  const m = L.marker(latlng, { icon, draggable: true }).addTo(map);
+  m.on('dragend', function(e) {
+    const idx = markers.indexOf(m);
+    if (idx >= 0) {
+      waypoints[idx].latlng = e.target.getLatLng();
+      waypoints[idx].road = null;
+      waypoints[idx].roadInfo = null;
+      getRoadName(waypoints[idx].latlng, idx);
+      drawRoute();
+      updateStats();
+      runRoadAnalysis();
+    }
+  });
+  markers.push(m);
+}
+
+function drawRoute() {
+  if (polyline) { map.removeLayer(polyline); polyline = null; }
+  if (waypoints.length < 2) return;
+
+  let allCoords = [];
+  for (let i = 0; i < waypoints.length; i++) {
+    if (i > 0 && mode === 'snap' && waypoints[i].snapCoords) {
+      waypoints[i].snapCoords.forEach(c => allCoords.push([c[1], c[0]]));
+    } else {
+      allCoords.push([waypoints[i].latlng.lat, waypoints[i].latlng.lng]);
+    }
+  }
+
+  polyline = L.polyline(allCoords, {
+    color: '#2d6a4f', weight: 4, opacity: 0.85,
+    dashArray: null,
+  }).addTo(map);
+}
+
+
+// ── Road classification helpers ──
+// Returns { trafficLevel, trafficLabel, surface, surfaceLabel, color, markerColor }
+const ROAD_TRAFFIC = {
+  motorway: { level: 'red',    label: 'Motorway (very busy)' },
+  trunk:    { level: 'red',    label: 'Trunk road (very busy)' },
+  primary:  { level: 'red',    label: 'Primary road (heavy traffic)' },
+  secondary:{ level: 'yellow', label: 'Secondary road (moderate traffic)' },
+  tertiary: { level: 'yellow', label: 'Tertiary road (moderate traffic)' },
+  unclassified: { level: 'green', label: 'Unclassified road (light traffic)' },
+  residential:  { level: 'green', label: 'Residential street (light traffic)' },
+  living_street:{ level: 'green', label: 'Living street (very light traffic)' },
+  cycleway:     { level: 'green', label: 'Dedicated cycleway' },
+  path:         { level: 'green', label: 'Path / track' },
+  service:      { level: 'green', label: 'Service road (light traffic)' },
+};
+const UNPAVED_SURFACES = new Set(['gravel','dirt','unpaved','compacted','fine_gravel','grass','ground','mud','sand','wood','rock']);
+const MARKER_COLORS = { red: '#e74c3c', yellow: '#f4a261', green: '#2d6a4f', brown: '#8b5e3c', default: '#f4a261' };
+
+const roadInfoCache = {};
+let roadInfoDebounce = null;
+
+async function fetchRoadInfo(latlng, idx) {
+  const key = latlng.lat.toFixed(4) + ',' + latlng.lng.toFixed(4);
+  if (roadInfoCache[key]) {
+    waypoints[idx].roadInfo = roadInfoCache[key];
+    return roadInfoCache[key];
+  }
+  const r = 30; // search radius in metres
+  const query = `[out:json][timeout:8];way(around:${r},${latlng.lat},${latlng.lng})[highway];out tags 1;`;
+  try {
+    const res = await fetch('https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query));
+    const data = await res.json();
+    const way = data.elements && data.elements[0];
+    if (!way) { roadInfoCache[key] = null; return null; }
+    const tags = way.tags || {};
+    const highway = tags.highway || 'unclassified';
+    const surface = tags.surface || tags.tracktype || null;
+    const trafficInfo = ROAD_TRAFFIC[highway] || { level: 'green', label: highway };
+    const isUnpaved = surface ? UNPAVED_SURFACES.has(surface) : false;
+    const info = {
+      highway,
+      surface,
+      isUnpaved,
+      trafficLevel: trafficInfo.level,
+      trafficLabel: trafficInfo.label,
+      surfaceLabel: surface ? surface.replace(/_/g,' ') : 'paved (assumed)',
+      markerColor: isUnpaved ? 'brown' : trafficInfo.level,
+    };
+    roadInfoCache[key] = info;
+    waypoints[idx].roadInfo = info;
+    return info;
+  } catch(e) {
+    return null;
+  }
+}
+
+async function fetchAllRoadInfo() {
+  const promises = waypoints.map((wp, i) => {
+    if (wp.roadInfo) return Promise.resolve(wp.roadInfo);
+    return fetchRoadInfo(wp.latlng, i);
+  });
+  await Promise.all(promises);
+}
+
+function updateMarkerColor(idx) {
+  if (!markers[idx]) return;
+  const wp = waypoints[idx];
+  const info = wp.roadInfo;
+  const isFirst = idx === 0;
+  const num = idx + 1;
+  let bg = isFirst ? '#2d6a4f' : '#f4a261';
+  if (info && !isFirst) {
+    bg = MARKER_COLORS[info.markerColor] || bg;
+  }
+  const size = isFirst ? 28 : 22;
+  const icon = L.divIcon({
+    className: '',
+    html: `<div style="
+      width:${size}px;height:${size}px;
+      background:${bg};
+      border:3px solid #fff;border-radius:50%;
+      display:flex;align-items:center;justify-content:center;
+      font-size:${isFirst?11:9}px;font-weight:700;color:#fff;
+      box-shadow:0 2px 6px rgba(0,0,0,0.3);
+      font-family:'Barlow Condensed',sans-serif;
+    ">${num}</div>`,
+    iconSize: [size, size],
+    iconAnchor: [size/2, size/2],
+  });
+  markers[idx].setIcon(icon);
+}
+
+function renderRoadWarnings() {
+  const section = document.getElementById('road-warnings-section');
+  const list = document.getElementById('road-warnings-list');
+  const hasInfo = waypoints.some(wp => wp.roadInfo);
+  if (!hasInfo || waypoints.length < 1) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = 'block';
+  const items = [];
+  waypoints.forEach((wp, i) => {
+    const info = wp.roadInfo;
+    if (!info) return;
+    const road = wp.road || 'Waypoint ' + (i+1);
+    if (info.isUnpaved) {
+      items.push({ cls: 'warn-brown', dot: 'brown',
+        html: `<strong>Pt ${i+1} — ${road}:</strong> Unpaved surface (${info.surfaceLabel}). May be unsuitable for road bikes.` });
+    }
+    if (info.trafficLevel === 'red') {
+      items.push({ cls: 'warn-red', dot: 'red',
+        html: `<strong>Pt ${i+1} — ${road}:</strong> ${info.trafficLabel}. Consider an alternate route.` });
+    } else if (info.trafficLevel === 'yellow') {
+      items.push({ cls: 'warn-yellow', dot: 'yellow',
+        html: `<strong>Pt ${i+1} — ${road}:</strong> ${info.trafficLabel}.` });
+    }
+  });
+  if (items.length === 0) {
+    list.innerHTML = '<div class="warn-item warn-green"><div class="warn-dot green"></div><div class="warn-text">All waypoints are on quiet, paved roads. Looks great!</div></div>';
+  } else {
+    list.innerHTML = items.map(it =>
+      `<div class="warn-item ${it.cls}"><div class="warn-dot ${it.dot}"></div><div class="warn-text">${it.html}</div></div>`
+    ).join('');
+  }
+}
+
+
+// ── Construction zone detection (OSM Overpass) ──
+let constructionZones = [];   // { lat, lng, name, type }
+let constructionMarkers = []; // Leaflet markers for 🚧 icons
+let constructionDebounce = null;
+
+async function fetchConstructionZones() {
+  if (waypoints.length < 1) return;
+
+  // Build a bounding box around all waypoints with a 200m buffer
+  const lats = waypoints.map(wp => wp.latlng.lat);
+  const lngs = waypoints.map(wp => wp.latlng.lng);
+  const buf = 0.003; // ~200m in degrees
+  const bbox = `${Math.min(...lats)-buf},${Math.min(...lngs)-buf},${Math.max(...lats)+buf},${Math.max(...lngs)+buf}`;
+
+  // Query for construction highways and nodes tagged as roadworks within bbox
+  const query = `[out:json][timeout:10];
+(
+  way["highway"="construction"](${bbox});
+  way["construction"~"."](${bbox});
+  node["highway"="construction"](${bbox});
+  node["highway"="stop"]["construction"~"."](${bbox});
+);
+out center tags;`;
+
+  try {
+    const res = await fetch('https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query));
+    const data = await res.json();
+    constructionZones = (data.elements || []).map(el => {
+      const lat = el.lat || el.center?.lat;
+      const lng = el.lon || el.center?.lon;
+      if (!lat || !lng) return null;
+      const tags = el.tags || {};
+      const name = tags.name || tags['addr:street'] || tags.ref || tags.description || 'Road construction zone';
+      const ctype = tags.construction || tags.highway || 'construction';
+      return { lat, lng, name, type: ctype };
+    }).filter(Boolean);
+
+    // Filter: only keep zones within ~300m of our actual route
+    constructionZones = constructionZones.filter(zone => {
+      return waypoints.some(wp => {
+        const d = haversine(
+          { lat: wp.latlng.lat, lng: wp.latlng.lng },
+          { lat: zone.lat, lng: zone.lng }
+        );
+        return d < 0.3; // 300 metres
+      });
+    });
+
+    clearConstructionMarkers();
+    constructionZones.forEach(zone => addConstructionMarker(zone));
+    renderConstructionWarnings();
+  } catch(e) {
+    console.warn('Construction fetch failed:', e);
+  }
+}
+
+function addConstructionMarker(zone) {
+  const icon = L.divIcon({
+    className: '',
+    html: `<div style="
+      background:#e6a817;
+      border:3px solid #fff;
+      border-radius:6px;
+      width:28px;height:28px;
+      display:flex;align-items:center;justify-content:center;
+      font-size:15px;
+      box-shadow:0 2px 6px rgba(0,0,0,0.3);
+      cursor:default;
+    ">🚧</div>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+  });
+  const m = L.marker([zone.lat, zone.lng], { icon, zIndexOffset: 200 })
+    .bindTooltip(`<strong>Construction:</strong> ${zone.name}`, { direction: 'top', offset: [0, -14] })
+    .addTo(map);
+  constructionMarkers.push(m);
+}
+
+function clearConstructionMarkers() {
+  constructionMarkers.forEach(m => map.removeLayer(m));
+  constructionMarkers = [];
+}
+
+function renderConstructionWarnings() {
+  // Merge construction warnings into the existing road warnings panel
+  const section = document.getElementById('road-warnings-section');
+  const list = document.getElementById('road-warnings-list');
+
+  // Remove existing construction warning items first
+  const existing = list.querySelectorAll('.construction-warn');
+  existing.forEach(el => el.remove());
+
+  if (constructionZones.length === 0) return;
+
+  section.style.display = 'block';
+  constructionZones.forEach(zone => {
+    const div = document.createElement('div');
+    div.className = 'warn-item warn-construction construction-warn';
+    div.innerHTML = `<div class="warn-dot construction"></div><div class="warn-text"><strong>🚧 Construction:</strong> ${zone.name}${zone.type !== 'construction' ? ' (' + zone.type.replace(/_/g,' ') + ')' : ''} — marked on map</div>`;
+    list.appendChild(div);
+  });
+}
+
+async function runRoadAnalysis() {
+  clearTimeout(roadInfoDebounce);
+  if (waypoints.length === 0) {
+    document.getElementById('road-warnings-section').style.display = 'none';
+    return;
+  }
+  roadInfoDebounce = setTimeout(async () => {
+    showToast('Checking road conditions…');
+    await Promise.all([fetchAllRoadInfo(), fetchConstructionZones()]);
+    waypoints.forEach((_, i) => updateMarkerColor(i));
+    renderRoadWarnings();
+    renderConstructionWarnings();
+  }, 800);
+}
+
+// ── Road name geocoding (Nominatim reverse) ──
+const roadCache = {};
+async function getRoadName(latlng, idx) {
+  const key = `${latlng.lat.toFixed(5)},${latlng.lng.toFixed(5)}`;
+  if (roadCache[key]) { waypoints[idx].road = roadCache[key]; return; }
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latlng.lat}&lon=${latlng.lng}&format=json`, {
+      headers: { 'Accept-Language': 'en' }
+    });
+    const data = await res.json();
+    const road = data.address?.road || data.address?.pedestrian || data.address?.path || data.address?.cycleway || 'Unknown road';
+    roadCache[key] = road;
+    waypoints[idx].road = road;
+  } catch(e) {
+    waypoints[idx].road = 'Unknown road';
+  }
+}
+
+// Prefetch road names for all waypoints
+async function fetchAllRoadNames() {
+  const promises = waypoints.map((wp, i) => {
+    if (!wp.road) return getRoadName(wp.latlng, i);
+    return Promise.resolve();
+  });
+  await Promise.all(promises);
+}
+
+// ── Distance calculation ──
+function haversine(a, b) {
+  const R = 6371;
+  const dLat = (b.lat - a.lat) * Math.PI / 180;
+  const dLon = (b.lng - a.lng) * Math.PI / 180;
+  const sa = Math.sin(dLat/2)**2 + Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(sa), Math.sqrt(1-sa));
+}
+
+function totalDistanceKm() {
+  let d = 0;
+  for (let i = 1; i < waypoints.length; i++) {
+    if (mode === 'snap' && waypoints[i].snapCoords) {
+      const coords = waypoints[i].snapCoords;
+      for (let j = 1; j < coords.length; j++) {
+        d += haversine({lat:coords[j-1][1],lng:coords[j-1][0]},{lat:coords[j][1],lng:coords[j][0]});
+      }
+    } else {
+      d += haversine(waypoints[i-1].latlng, waypoints[i].latlng);
+    }
+  }
+  return d;
+}
+
+function updateStats() {
+  const km = totalDistanceKm();
+  const mi = km * 0.621371;
+  document.getElementById('stat-dist').textContent = mi.toFixed(1);
+  document.getElementById('stat-km').textContent = km.toFixed(1);
+  document.getElementById('stat-pts').textContent = waypoints.length;
+  document.getElementById('stat-seg').textContent = Math.max(0, waypoints.length - 1);
+  if (waypoints.length >= 2) {
+    fetchElevation();
+  } else {
+    document.getElementById('stat-ascent').textContent = '\u2014';
+    document.getElementById('stat-descent').textContent = '\u2014';
+    document.getElementById('stat-ascent-unit').style.display = 'none';
+    document.getElementById('stat-descent-unit').style.display = 'none';
+    document.getElementById('stat-ascent-spinner').style.display = 'none';
+    waypoints._ascentFt = null;
+    waypoints._descentFt = null;
+  }
+}
+
+// ── Elevation (Open-Meteo, free, no API key) ──
+let elevDebounce = null;
+let lastElevKey = '';
+
+async function fetchElevation() {
+  const pts = [];
+  for (let i = 0; i < waypoints.length; i++) {
+    if (mode === 'snap' && waypoints[i].snapCoords) {
+      const sc = waypoints[i].snapCoords;
+      const step = Math.max(1, Math.floor(sc.length / 10));
+      for (let j = 0; j < sc.length; j += step) pts.push([sc[j][1], sc[j][0]]);
+    } else {
+      pts.push([waypoints[i].latlng.lat, waypoints[i].latlng.lng]);
+    }
+  }
+  const sampled = pts.length <= 100 ? pts : pts.filter((_, i) => i % Math.ceil(pts.length / 100) === 0);
+  const key = sampled.map(p => p[0].toFixed(4)+','+p[1].toFixed(4)).join('|');
+  if (key === lastElevKey) return;
+  clearTimeout(elevDebounce);
+  document.getElementById('stat-ascent-spinner').style.display = 'inline';
+  document.getElementById('stat-ascent').textContent = '\u2026';
+  document.getElementById('stat-descent').textContent = '\u2026';
+  elevDebounce = setTimeout(async () => {
+    lastElevKey = key;
+    try {
+      const lats = sampled.map(p => p[0]).join(',');
+      const lngs = sampled.map(p => p[1]).join(',');
+      const res = await fetch('https://api.open-meteo.com/v1/elevation?latitude='+lats+'&longitude='+lngs);
+      const data = await res.json();
+      const elevs = data.elevation;
+      if (!elevs || elevs.length < 2) throw new Error('no data');
+      let ascentM = 0, descentM = 0;
+      for (let i = 1; i < elevs.length; i++) {
+        const diff = elevs[i] - elevs[i-1];
+        if (diff > 0) ascentM += diff; else descentM += Math.abs(diff);
+      }
+      const ascentFt = Math.round(ascentM * 3.28084);
+      const descentFt = Math.round(descentM * 3.28084);
+      document.getElementById('stat-ascent').textContent = ascentFt.toLocaleString();
+      document.getElementById('stat-descent').textContent = descentFt.toLocaleString();
+      document.getElementById('stat-ascent-unit').style.display = 'inline';
+      document.getElementById('stat-descent-unit').style.display = 'inline';
+      document.getElementById('stat-ascent-spinner').style.display = 'none';
+      waypoints._ascentFt = ascentFt;
+      waypoints._descentFt = descentFt;
+    } catch(e) {
+      document.getElementById('stat-ascent').textContent = '?';
+      document.getElementById('stat-descent').textContent = '?';
+      document.getElementById('stat-ascent-spinner').style.display = 'none';
+    }
+  }, 700);
+}
+
+// ── Undo ──
+function undoLast() {
+  if (waypoints.length === 0) return;
+  waypoints.pop();
+  const m = markers.pop();
+  if (m) map.removeLayer(m);
+  drawRoute();
+  updateStats();
+  runRoadAnalysis();
+  showToast('Last waypoint removed');
+}
+
+// ── Clear ──
+function clearRoute() {
+  if (waypoints.length === 0) return;
+  if (!confirm('Clear the entire route?')) return;
+  waypoints = [];
+  markers.forEach(m => map.removeLayer(m));
+  markers = [];
+  if (polyline) { map.removeLayer(polyline); polyline = null; }
+  updateStats();
+  document.getElementById('road-warnings-section').style.display = 'none';
+  document.getElementById('road-warnings-list').innerHTML = '';
+  clearConstructionMarkers();
+  constructionZones = [];
+  showToast('Route cleared');
+}
+
+// ── Mode ──
+function setMode(m) {
+  mode = m;
+  document.getElementById('btn-free').classList.toggle('active', m === 'free');
+  document.getElementById('btn-snap').classList.toggle('active', m === 'snap');
+  document.getElementById('mode-badge').textContent = m === 'free' ? 'FREE DRAW' : 'SNAP TO ROADS';
+  document.getElementById('mode-hint').textContent = m === 'free'
+    ? 'Click anywhere on the map to place waypoints. No snapping — you control every turn.'
+    : 'Click to place waypoints. The route snaps to the nearest road automatically via OSRM.';
+  document.getElementById('map').className = m === 'snap' ? 'snap-mode' : '';
+}
+
+// ── Unit toggle ──
+function toggleUnit() {
+  showMiles = !showMiles;
+  document.getElementById('unit-label').textContent = showMiles ? 'Show km' : 'Show miles';
+  updateStats();
+}
+
+// ── Bearing for directions ──
+function bearing(a, b) {
+  const dLon = (b.lng - a.lng) * Math.PI / 180;
+  const lat1 = a.lat * Math.PI / 180;
+  const lat2 = b.lat * Math.PI / 180;
+  const x = Math.sin(dLon) * Math.cos(lat2);
+  const y = Math.cos(lat1)*Math.sin(lat2) - Math.sin(lat1)*Math.cos(lat2)*Math.cos(dLon);
+  return (Math.atan2(x, y) * 180 / Math.PI + 360) % 360;
+}
+
+function compassDir(deg) {
+  const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+  return dirs[Math.round(deg/45) % 8];
+}
+
+function turnDir(prevBearing, newBearing) {
+  let diff = ((newBearing - prevBearing) + 360) % 360;
+  if (diff < 30 || diff > 330) return 'Continue straight';
+  if (diff < 180) return 'Turn right';
+  return 'Turn left';
+}
+
+// ── Directions ──
+async function showDirections() {
+  if (waypoints.length < 2) { showToast('Add at least 2 waypoints first'); return; }
+  showToast('Fetching road names…');
+  await fetchAllRoadNames();
+
+  const name = document.getElementById('route-name').value || 'My Ride';
+  const notes = document.getElementById('route-notes').value.trim();
+  const km = totalDistanceKm();
+  const mi = km * 0.621371;
+  let text = `🚴 ${name.toUpperCase()}\n`;
+  text += `${'─'.repeat(40)}\n`;
+  text += `Total distance: ${mi.toFixed(1)} mi / ${km.toFixed(1)} km\n`;
+  const ascentFt = waypoints._ascentFt != null ? waypoints._ascentFt.toLocaleString() + ' ft' : 'not yet calculated';
+  const descentFt = waypoints._descentFt != null ? waypoints._descentFt.toLocaleString() + ' ft' : 'not yet calculated';
+  text += `Total ascent: ${ascentFt}  |  Total descent: ${descentFt}\n`;
+  text += `Waypoints: ${waypoints.length}\n`;
+  const warnings = waypoints.filter(wp => wp.roadInfo && (wp.roadInfo.isUnpaved || wp.roadInfo.trafficLevel === 'red' || wp.roadInfo.trafficLevel === 'yellow'));
+  if (warnings.length > 0 || constructionZones.length > 0) {
+    text += `\nROAD CONDITIONS SUMMARY\n`;
+    warnings.forEach((wp, _) => {
+      const i = waypoints.indexOf(wp);
+      const info = wp.roadInfo;
+      if (info.isUnpaved) text += `  Pt ${i+1} (${wp.road||'unknown'}): Unpaved — ${info.surfaceLabel}\n`;
+      if (info.trafficLevel === 'red') text += `  Pt ${i+1} (${wp.road||'unknown'}): Heavy traffic — ${info.trafficLabel}\n`;
+      else if (info.trafficLevel === 'yellow') text += `  Pt ${i+1} (${wp.road||'unknown'}): Moderate traffic — ${info.trafficLabel}\n`;
+    });
+    constructionZones.forEach(zone => {
+      text += `  🚧 Construction near route: ${zone.name}\n`;
+    });
+    text += `\n`;
+  }
+  if (notes) text += `Notes: ${notes}\n`;
+  text += `${'─'.repeat(40)}\n\n`;
+  text += `TURN-BY-TURN DIRECTIONS\n\n`;
+
+  let cumKm = 0;
+  for (let i = 0; i < waypoints.length; i++) {
+    const road = waypoints[i].road || 'Unknown road';
+    const cumMi = cumKm * 0.621371;
+    if (i === 0) {
+      text += `START  Waypoint 1\n`;
+      text += `       ${road}\n`;
+      text += `       ${waypoints[i].latlng.lat.toFixed(5)}, ${waypoints[i].latlng.lng.toFixed(5)}\n\n`;
+    } else {
+      const segKm = haversine(waypoints[i-1].latlng, waypoints[i].latlng);
+      const segMi = segKm * 0.621371;
+      cumKm += segKm;
+      const b1 = i >= 2 ? bearing(waypoints[i-2].latlng, waypoints[i-1].latlng) : null;
+      const b2 = bearing(waypoints[i-1].latlng, waypoints[i].latlng);
+      const turn = b1 !== null ? turnDir(b1, b2) : `Head ${compassDir(b2)}`;
+      const isLast = i === waypoints.length - 1;
+      text += `${isLast ? 'FINISH' : `  ${String(i+1).padStart(2,' ')}  `}  ${turn} onto ${road}\n`;
+      text += `       Segment: ${segMi.toFixed(2)} mi (${segKm.toFixed(2)} km)\n`;
+      text += `       Cumulative: ${(cumKm*0.621371).toFixed(2)} mi (${cumKm.toFixed(2)} km)\n`;
+      text += `       ${waypoints[i].latlng.lat.toFixed(5)}, ${waypoints[i].latlng.lng.toFixed(5)}\n\n`;
+    }
+  }
+  text += `${'─'.repeat(40)}\n`;
+  text += `Generated by CycleMap · ${new Date().toLocaleDateString()}\n`;
+
+  document.getElementById('directions-content').textContent = text;
+  document.getElementById('directions-modal').classList.add('open');
+}
+
+// ── Share ──
+async function openShare() {
+  if (waypoints.length < 2) { showToast('Add at least 2 waypoints first'); return; }
+  await fetchAllRoadNames();
+  const name = document.getElementById('route-name').value || 'My Ride';
+  const notes = document.getElementById('route-notes').value.trim();
+  const km = totalDistanceKm();
+  const mi = km * 0.621371;
+  const center = map.getCenter();
+  const zoom = map.getZoom();
+  const osmUrl = `https://www.openstreetmap.org/#map=${zoom}/${center.lat.toFixed(4)}/${center.lng.toFixed(4)}`;
+
+  let text = `🚴 Check out my cycling route: ${name}\n\n`;
+  text += `📏 Distance: ${mi.toFixed(1)} mi (${km.toFixed(1)} km)\n`;
+  text += `📍 ${waypoints.length} waypoints\n`;
+  if (waypoints._ascentFt != null) text += `Ascent: ${waypoints._ascentFt.toLocaleString()} ft  |  Descent: ${waypoints._descentFt.toLocaleString()} ft\\n`;
+  if (notes) text += `\n📝 ${notes}\n`;
+  text += `\nMap view: ${osmUrl}\n\n`;
+  text += `Waypoints:\n`;
+  waypoints.forEach((wp, i) => {
+    text += `  ${i+1}. ${wp.road || 'Unknown road'} (${wp.latlng.lat.toFixed(4)}, ${wp.latlng.lng.toFixed(4)})\n`;
+  });
+  text += `\nGenerated by CycleMap`;
+
+  document.getElementById('share-content').textContent = text;
+  document.getElementById('share-modal').classList.add('open');
+}
+
+// ── Save / Load routes ──
+function saveRoute() {
+  if (waypoints.length < 2) { showToast('Add at least 2 waypoints first'); return; }
+  const name = document.getElementById('route-name').value.trim() || `Route ${savedRoutes.length + 1}`;
+  const km = totalDistanceKm();
+  const notes = document.getElementById('route-notes').value.trim();
+  const route = {
+    id: Date.now(),
+    name,
+    km,
+    notes,
+    waypoints: waypoints.map(wp => ({ lat: wp.latlng.lat, lng: wp.latlng.lng, road: wp.road })),
+    date: new Date().toLocaleDateString(),
+    mode,
+  };
+  savedRoutes.unshift(route);
+  localStorage.setItem('cyclemap_routes', JSON.stringify(savedRoutes));
+  renderSavedRoutes();
+  showToast(`"${name}" saved!`);
+}
+
+function loadRoute(id) {
+  const route = savedRoutes.find(r => r.id === id);
+  if (!route) return;
+  clearRoute();
+  setMode(route.mode || 'snap');
+  route.waypoints.forEach((wp, i) => {
+    const latlng = L.latLng(wp.lat, wp.lng);
+    waypoints.push({ latlng, road: wp.road });
+    addMarker(latlng, i+1);
+  });
+  drawRoute();
+  updateStats();
+  document.getElementById('route-name').value = route.name;
+  document.getElementById('route-notes').value = route.notes || '';
+  if (waypoints.length > 0) {
+    const bounds = L.latLngBounds(waypoints.map(wp => wp.latlng));
+    map.fitBounds(bounds, { padding: [40, 40] });
+  }
+  runRoadAnalysis();
+  showToast(`Loaded "${route.name}"`);
+}
+
+function deleteRoute(id) {
+  savedRoutes = savedRoutes.filter(r => r.id !== id);
+  localStorage.setItem('cyclemap_routes', JSON.stringify(savedRoutes));
+  renderSavedRoutes();
+  showToast('Route deleted');
+}
+
+function renderSavedRoutes() {
+  const el = document.getElementById('saved-routes-list');
+  if (savedRoutes.length === 0) {
+    el.innerHTML = '<div class="no-routes">No saved routes yet.<br>Map a ride and save it above.</div>';
+    return;
+  }
+  el.innerHTML = savedRoutes.map(r => {
+    const mi = (r.km * 0.621371).toFixed(1);
+    const notesSnippet = r.notes ? `<div style="font-size:11px;color:var(--gray-500);margin-top:4px;font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">"${r.notes.slice(0,60)}${r.notes.length>60?'…':''}"</div>` : '';
+    return `<div class="route-item">
+      <div class="route-item-name">${r.name} <span style="font-weight:400;color:var(--gray-300);font-size:13px;">(${mi} mi)</span></div>
+      <div class="route-item-meta">${r.waypoints.length} waypoints · ${r.date}</div>
+      ${notesSnippet}
+      <div class="route-item-actions">
+        <button class="btn btn-outline" style="padding:5px 10px;font-size:11px;" onclick="loadRoute(${r.id})">Load</button>
+        <button class="btn btn-danger" style="padding:5px 10px;font-size:11px;" onclick="deleteRoute(${r.id})">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Search location ──
+async function searchLocation() {
+  const q = document.getElementById('search-input').value.trim();
+  if (!q) return;
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`, {
+      headers: { 'Accept-Language': 'en' }
+    });
+    const data = await res.json();
+    if (data[0]) {
+      map.setView([parseFloat(data[0].lat), parseFloat(data[0].lon)], 14);
+      showToast(`Jumped to ${data[0].display_name.split(',')[0]}`);
+    } else {
+      showToast('Location not found');
+    }
+  } catch(e) {
+    showToast('Search failed — check your connection');
+  }
+}
+
+// ── Copy / Email helpers ──
+function copyDirections() {
+  const text = document.getElementById('directions-content').textContent;
+  navigator.clipboard.writeText(text).then(() => showToast('Copied to clipboard!'));
+}
+function emailDirections() {
+  const name = document.getElementById('route-name').value || 'My Ride';
+  const text = document.getElementById('directions-content').textContent;
+  window.location.href = `mailto:?subject=${encodeURIComponent('Cycling Route: '+name)}&body=${encodeURIComponent(text)}`;
+}
+function copyShare() {
+  const text = document.getElementById('share-content').textContent;
+  navigator.clipboard.writeText(text).then(() => showToast('Copied to clipboard!'));
+}
+function emailShare() {
+  const name = document.getElementById('route-name').value || 'My Ride';
+  const text = document.getElementById('share-content').textContent;
+  window.location.href = `mailto:?subject=${encodeURIComponent('Cycling Route: '+name)}&body=${encodeURIComponent(text)}`;
+}
+
+// ── Modal helpers ──
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-bg').forEach(m => {
+  m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
+});
+
+// ── Toast ──
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ── Init ──
+renderSavedRoutes();
+updateStats();
+document.getElementById('map').className = 'snap-mode';
+</script>
+</body>
+</html>
